@@ -1,15 +1,19 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class CubeController : MonoBehaviour
 {
+    [Header("Cube Settings")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float maxDragDistance = 3f;
     [SerializeField] private float forceImpulse = 10f;
+
+    [Header("Spawn Settings")]
     [SerializeField] private Transform cubeSpawnPoint;
-    [SerializeField] private CubeSpawner cubeSpawner;
+    [SerializeField] private CubeFactory cubeFactory;
     [SerializeField] private float timeToSpawnCube = 1f;
 
-    private Cube currentCube;
+    private IMovable currentEntity;
     private bool isDragging = false;
     private Vector2 startTouchPos;
     private Vector3 cubeStartPos;
@@ -22,70 +26,96 @@ public class CubeController : MonoBehaviour
     private void Update()
     {
 #if UNITY_EDITOR
-        if (Input.GetMouseButtonDown(0))
+        HandleEditorInput();
+#else
+        HandleTouchInput();
+#endif
+    }
+
+    private void HandleEditorInput()
+    {
+        if (PauseManager.IsPaused || GameManager.IsGameover) return;
+
+        if (Input.GetMouseButtonDown(0) && !IsPointerOverUI())
             BeginDrag(Input.mousePosition);
+
         if (Input.GetMouseButton(0))
             ContinueDrag(Input.mousePosition);
+
         if (Input.GetMouseButtonUp(0))
             EndDrag();
-#else
-        if (Input.touchCount > 0)
+    }
+
+    private void HandleTouchInput()
+    {
+        if (Input.touchCount == 0 || PauseManager.IsPaused || GameManager.IsGameover) return;
+
+        Touch touch = Input.GetTouch(0);
+
+        if (IsPointerOverUI(touch.fingerId)) return;
+
+        switch (touch.phase)
         {
-            Touch touch = Input.GetTouch(0);
-            switch (touch.phase)
-            {
-                case TouchPhase.Began:
-                    BeginDrag(touch.position);
-                    break;
-                case TouchPhase.Moved:
-                    ContinueDrag(touch.position);
-                    break;
-                case TouchPhase.Ended:
-                    EndDrag();
-                    break;
-            }
+            case TouchPhase.Began:
+                BeginDrag(touch.position);
+                break;
+            case TouchPhase.Moved:
+                ContinueDrag(touch.position);
+                break;
+            case TouchPhase.Ended:
+                EndDrag();
+                break;
         }
-#endif
     }
 
     private void BeginDrag(Vector2 touchPos)
     {
-        if (currentCube == null) return;
+        if (currentEntity == null) return;
 
         isDragging = true;
         startTouchPos = touchPos;
-        cubeStartPos = currentCube.transform.position;
+        cubeStartPos = currentEntity.GetPos();
     }
 
     private void ContinueDrag(Vector2 touchPos)
     {
-        if (!isDragging || currentCube == null) return;
+        if (!isDragging || currentEntity == null) return;
 
         float deltaX = (touchPos.x - startTouchPos.x) / Screen.width * moveSpeed;
-        Vector3 newPos = cubeStartPos + new Vector3(deltaX, 0, 0);
+        Vector3 newPos = cubeStartPos + new Vector3(deltaX, 0f, 0f);
 
         newPos.x = Mathf.Clamp(newPos.x, -maxDragDistance, maxDragDistance);
-
-        currentCube.transform.position = newPos;
+        currentEntity.SetPos(newPos);
     }
 
     private void EndDrag()
     {
-        if (!isDragging || currentCube == null) return;
+        if (!isDragging || currentEntity == null) return;
 
         isDragging = false;
-        currentCube.Throw(forceImpulse);
+        currentEntity.AddForce(Vector3.forward, forceImpulse);
+        currentEntity = null;
 
-        currentCube = null;
         Invoke(nameof(SpawnNewCube), timeToSpawnCube);
     }
 
     private void SpawnNewCube()
     {
-        if (cubeSpawner.SpawnCube(cubeSpawnPoint.position).TryGetComponent(out Cube cube))
+        GameObject newObject = cubeFactory.SpawnCube(cubeSpawnPoint.position);
+
+        if (newObject.TryGetComponent(out IMovable movable))
         {
-            currentCube = cube;
-            cube.Init();
+            currentEntity = movable;
         }
+    }
+
+    private bool IsPointerOverUI()
+    {
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    }
+
+    private bool IsPointerOverUI(int fingerId)
+    {
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(fingerId);
     }
 }

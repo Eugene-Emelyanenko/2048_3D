@@ -1,93 +1,48 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
-public class Cube : MonoBehaviour
+public class Cube : MonoBehaviour, IGameEntity, IMovable
 {
     [SerializeField] private Rigidbody rb;
-    [SerializeField] protected MeshRenderer meshRenderer;
 
-    [SerializeField] private TextMeshProUGUI[] cubeValueTexts;
+    public event Action OnInitialized;
 
-    [SerializeField] private float minImpulse = 1.5f;
-
-    [SerializeField] private Color[] colors;
- 
-    private bool isMerging = false;
-
-    public delegate void OnCubeMerge(int newValue, Vector3 position);
-    public static event OnCubeMerge onCubeMerge;
-
-    private int _value;
-
-    public int Value
-    {
-        get => _value;
-        private set
-        {
-            _value = value;
-            UpdateUI();
-        }
-    }
-
+    public int Value { get; private set; }
 
     public void Init(int value = 2, bool isKinematic = true)
     {
         rb.isKinematic = isKinematic;
         Value = value;
+
+        OnInitialized?.Invoke();
     }
 
-    private void UpdateUI()
-    {
-        foreach (TextMeshProUGUI text in cubeValueTexts)
-        {
-            if (text != null)
-                text.text = Value.ToString();
-        }
-
-        int index = (int)Mathf.Log(Value, 2) - 1;
-        index = Mathf.Clamp(index, 0, colors.Length - 1);
-        meshRenderer.material.color = colors[index];
-    }
-
-    public void Throw(float impluse)
+    public void AddForce(Vector3 direction, float impluse)
     {
         rb.isKinematic = false;
-        rb.AddForce(Vector3.forward * impluse, ForceMode.Impulse);
+        rb.AddForce(direction * impluse, ForceMode.Impulse);
+    }   
+
+    public Vector3 GetPos()
+    {
+        return transform.position;
     }
 
-    void OnCollisionEnter(Collision collision)
+    public void SetPos(Vector3 newPos)
     {
-        if (isMerging) return;
-
-        Cube other = collision.gameObject.GetComponent<Cube>();
-        if (other == null || other.isMerging) return;
-
-        float impactForce = collision.impulse.magnitude;
-        if (impactForce < minImpulse) return;
-
-        if (Value == other.Value)
-        {
-            MergeWith(other);
-        }
+        transform.position = newPos;
     }
 
-    void MergeWith(Cube other)
+    public void DestroyEntity()
     {
-        isMerging = true;
-        other.isMerging = true;
-
-        int newValue = Value * 2;
-
-        Vector3 mergePosition = (transform.position + other.transform.position) / 2;
-
-        Destroy(other.gameObject);
-
-        onCubeMerge?.Invoke(newValue, mergePosition);
-
         Destroy(gameObject);
+    }
+
+    public void AddTorque(Vector3 torque)
+    {
+        rb.AddTorque(torque, ForceMode.Impulse);
     }
 }
